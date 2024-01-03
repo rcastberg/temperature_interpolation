@@ -1,10 +1,9 @@
-from multiprocessing.dummy import Pool as ThreadPool
 from multiprocessing import cpu_count
-from tqdm import tqdm
-import plotly.graph_objects as go
-import numpy as np
-from scipy.interpolate import *
+from multiprocessing.dummy import Pool as ThreadPool
 
+import numpy as np
+import plotly.graph_objects as go
+np.seterr(all='raise')
 
 class Points:
     def __init__(self, x, y):
@@ -19,6 +18,7 @@ class Temperature:
         self.temp = temp
         self.name = name
 
+from first_floor import thermometers, walls
 
 def ccw(A, B, C):
     return (C.y - A.y) * (B.x - A.x) > (B.y - A.y) * (C.x - A.x)
@@ -47,6 +47,19 @@ def check_intersect(cur_pos, target_pos, walls):
 def calculate_distance(cur_pos, target_pos):
     d = np.sqrt(pow((cur_pos.x - target_pos.x), 2) + pow((cur_pos.y - target_pos.y), 2))
     return d
+
+def inverse_distance_weighting(distances, values, power):
+    # Calculate the weighted sum of known values based on distances
+    distances = distances + 1e-3 # ensure no zero distance
+    numerator = np.sum(values / (distances ** power))
+
+    # Calculate the sum of weights (inverse of distances)
+    weights = np.sum(1 / (distances ** power))
+    
+    # Calculate the interpolated value using Inverse Distance Weighting (IDW) formula
+    interpolated_value = numerator / weights
+    
+    return interpolated_value
 
 
 def check_inwall(i):
@@ -81,59 +94,53 @@ def check_inwall(i):
                             intersect[t] = True
                 dists[t] = calculate_distance(Points(x[i], y[j]), thermometers[t])
             intersect_not = [not i for i in intersect]
-            total_d = sum(dists[intersect_not])
 
             temp = 0
-            if sum(intersect_not) > 1:
-                for t in range(len(thermometers)):
-                    if intersect_not[t]:
-                        temp += thermometers[t].temp * (dists[t]/total_d)
+            if sum(intersect_not) >= 1:
+                temp = inverse_distance_weighting(dists[intersect_not], np.array([t.temp for t in thermometers])[intersect_not], 2)
             else:
                 temp = np.nan  # thermometers[intersect_not][0].temp
             grid[j] = temp
+        else:
+            grid[j] = np.nan
     return (i, grid)
 
 
 if __name__ == '__main__':
 
-    thermometers = np.array([
-        Temperature(1, 1, 23.7, 'Living Room Smoke'),
-        Temperature(4.40, 1, 23, 'Living Room Window'),
-        Temperature(3.53, 0.50, 18.7, 'Living Room Door'),
-        Temperature(0.5, 4.5, 23.9, 'Living Room Smoke'),
-        Temperature(4.13, 3.09, 24.9, 'Living room Heatpump')
-        ])
-
-    walls = [(Points(0, 0), Points(4.53, 0)),
-             (Points(4.53, 0), Points(4.53, 7.04)),
-             (Points(4.53, 7.04), Points(1.25, 7.04)),
-             (Points(1.25, 7.04), Points(1.25, 4.63)),
-             (Points(1.25, 4.63), Points(0, 4.63)),
-             (Points(0, 4.63), Points(0, 0))]
-
-    # target grid to interpolate to
-    x = np.arange(0, 4.6, 0.5)
-    y = np.arange(0, 7.1, 0.5)
+    step_size = 0.1
+    xmax = max([p.x  for w in walls for p in w]) + step_size
+    ymax = max([p.y  for w in walls for p in w]) + step_size
+    x = np.arange(0, xmax, step_size)
+    y = np.arange(0, ymax, step_size)
 
     grid = np.empty([len(x), len(y)])
     grid[:] = np.nan
 
     i = range(len(x))
-    pool = ThreadPool(cpu_count())
 
-    check_inwall(1)
-    with ThreadPool(20) as pool:
-        results = pool.map(check_inwall, i, chunksize=20)
+    #for i in range(len(x)):
+    #    grid[i] = check_inwall(i)[1]
+
+    with ThreadPool(80) as pool:
+        results = pool.map(check_inwall, i, chunksize=1)
     pool.close()
     pool.join()
     res = []
     res.append(results)
     for r in res[0]:
         grid[r[0]] = r[1]
-    fig = go.Figure(data=go.Heatmap(x=x, y=y, z=grid, zmin=18, zmax=26))
+
+    fig = go.Figure(data=go.Heatmap(x=x, y=y, z=grid, zmin=15, zmax=30))
+    for w in walls:
+        fig.add_trace(go.Scatter(x=[w[0].y, w[1].y], y=[w[0].x, w[1].x], mode='lines', line=dict(color='black')))
+    for t in thermometers:
+        fig.add_trace(go.Scatter(x=[t.y], y=[t.x], mode='markers', name=t.name, marker=dict(color='red', size=10)))
     fig.update_layout(
         title='Heatmap',
         xaxis_title='Y',
-        yaxis_title='X')
+        yaxis_title='X'
+    )
+    fig.update_layout(showlegend=False)
     fig['layout']['yaxis']['scaleanchor'] = 'x'
     fig.show()
