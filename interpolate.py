@@ -9,7 +9,7 @@ Step_size: 0.2
 ha_url: "http://ha.local:8123/api/states/"
 Floors:
   Basement:
-    thermometers: 
+    thermometers:
       - name: Thermo1
         x: 1
         y: 2
@@ -29,6 +29,7 @@ import json
 import logging
 from io import BytesIO
 from multiprocessing.dummy import Pool as ThreadPool
+from functools import partial
 
 import numpy as np
 import plotly.graph_objects as go
@@ -36,6 +37,7 @@ import yaml
 from flask import Flask, send_file, url_for
 from flask_caching import Cache
 from requests import get
+
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -147,14 +149,12 @@ def inverse_distance_weighting(distances, values, power):
     return interpolated_value
 
 
-def check_inwall(i):
+def check_inwall(i, x=None, y=None, thermometers=None, walls=None):
     """Claculate the interpolated value for a all y coordinates for a given x coordinate
     Takes x coordinate as input
     i = x coordinate
     returns a list of interpolated values for all y coordinates for a given x coordinate"
     """
-    global x
-    global y
     grid = np.empty(len(y))
     grid[:] = np.nan
     for j, yj in enumerate(y):
@@ -195,7 +195,7 @@ def check_inwall(i):
     return (i, grid)
 
 
-def create_heatmap(step_size=0.1):
+def create_heatmap(step_size=0.1, thermometers=None, walls=None):
     """Create a heatmap
     Takes step_size as input
     step_size = step size to use in heatmap
@@ -203,7 +203,6 @@ def create_heatmap(step_size=0.1):
     """
     xmax = max(p.x for w in walls for p in w) + step_size
     ymax = max(p.y for w in walls for p in w) + step_size
-    global x, y
     x = np.arange(0, xmax, step_size)
     y = np.arange(0, ymax, step_size)
 
@@ -213,8 +212,9 @@ def create_heatmap(step_size=0.1):
     i = range(len(x))
 
     logging.debug('Checking inwall')
+    check_inwall_partial = partial(check_inwall, x=x, y=y, thermometers=thermometers, walls=walls)
     with ThreadPool(80) as pool:
-        results = pool.map(check_inwall, i, chunksize=1)
+        results = pool.map(check_inwall_partial, i, chunksize=1)
     pool.close()
     pool.join()
     logging.debug('Inwall checked')
@@ -285,7 +285,6 @@ def make_temp_plot(location=None):
     logging.info('Creating heatmap for location: %s', location)
     with open('/config/floors.yaml', 'r', encoding='utf8') as f:
         floors = yaml.load(f, Loader=yaml.Loader)
-    global thermometers, walls
     thermometers = [Temperature(t['x'], t['y'], name=t['name'], ha_id=t['ha_entity'])
                     for t in floors['Floors'][location]['thermometers']]
     logging.debug('Reading temperatures')
@@ -296,7 +295,7 @@ def make_temp_plot(location=None):
     step_size = floors['Step_size']
     logging.debug('Heatmap settings for location: %s', location)
     logging.debug('Step size: %s', str(step_size))
-    image = create_heatmap(step_size=step_size)
+    image = create_heatmap(step_size=step_size, thermometers=thermometers, walls=walls)
     image.seek(0)
     logging.debug('Heatmap made')
     return send_file(image, download_name=location + '.' + extension, mimetype='image/' + extension)
