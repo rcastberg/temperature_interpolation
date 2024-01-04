@@ -112,14 +112,13 @@ def check_inwall(i):
     return (i, grid)
 
 
-def create_heatmap(name='Floorplan'):
-    step_size = 0.1
-    xmax = max([p.x for w in walls for p in w]) + step_size
-    ymax = max([p.y for w in walls for p in w]) + step_size
+def create_heatmap(name='Floorplan', step_size=0.1):
+    xmax = max(p.x for w in walls for p in w) + step_size
+    ymax = max(p.y for w in walls for p in w) + step_size
     global x, y
     x = np.arange(0, xmax, step_size)
     y = np.arange(0, ymax, step_size)
-    
+  
     grid = np.empty([len(x), len(y)])
     grid[:] = np.nan
 
@@ -186,9 +185,11 @@ def make_temp_plot(location=None):
     thermometers = [Temperature(t['x'], t['y'], name=t['name'], ha_id=t['ha_entity']) for t in floors['Floors'][location]['thermometers']]
     thermometers = read_temps(thermometers, token=floors['Token'])
     walls = [(Points(w[0][0], w[0][1]), Points(w[1][0], w[1][1])) for w in floors['Floors'][location]['walls']]
-    image = create_heatmap(name=location)
+    step_size = floors['Step_size']
+    image = create_heatmap(name=location, step_size=step_size)
     image.seek(0)
     return send_file(image, download_name=location + '.jpg', mimetype='image/jpg')
+
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)
