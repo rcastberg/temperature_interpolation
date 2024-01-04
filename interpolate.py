@@ -4,7 +4,7 @@ The script reads the location from the url and creates a heatmap for that locati
 Data is provided in the floors.yaml file.
 
 Exmaple of floors.yaml:
-Token: "ABCDEF..XYZ"
+Token: "ABCDEF...XYZ"
 Step_size: 0.2
 ha_url: "http://ha.local:8123/api/states/"
 Floors:
@@ -78,20 +78,20 @@ class Temperature:
         self.ha_id = ha_id
 
 
-def ccw(A, B, C):
+def ccw(a, b, c):
     """ Check if 2 lines intersect
     Line defined by AB and CD
     Source: https://bryceboe.com/2006/10/23/line-segment-intersection-algorithm/
     """
-    return (C.y - A.y) * (B.x - A.x) > (B.y - A.y) * (C.x - A.x)
+    return (c.y - a.y) * (b.x - a.x) > (b.y - a.y) * (c.x - a.x)
 
 
-def intersect_check(A, B, C, D):
+def intersect_check(a, b, c, d):
     """ Check if 2 lines intersect
     Lines defined by AB and CD
     Source: https://bryceboe.com/2006/10/23/line-segment-intersection-algorithm/
     """
-    return ccw(A, C, D) != ccw(B, C, D) and ccw(A, B, C) != ccw(A, B, D)
+    return ccw(a, c, d) != ccw(b, c, d) and ccw(a, b, c) != ccw(a, b, d)
 
 
 def check_intersect(cur_pos, target_pos, walls):
