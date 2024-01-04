@@ -7,11 +7,11 @@ import numpy as np
 import plotly.graph_objects as go
 import yaml
 from requests import get
-import base64
 
 np.seterr(all='raise')
 
 app = Flask(__name__)
+
 
 class Points:
     def __init__(self, x, y):
@@ -55,6 +55,7 @@ def check_intersect(cur_pos, target_pos, walls):
 def calculate_distance(cur_pos, target_pos):
     d = np.sqrt(pow((cur_pos.x - target_pos.x), 2) + pow((cur_pos.y - target_pos.y), 2))
     return d
+
 
 def inverse_distance_weighting(distances, values, power):
     # Calculate the weighted sum of known values based on distances
@@ -176,6 +177,7 @@ def read_temps(thermometers, token=''):
         t.temp = float(reading["state"])
     return thermometers
 
+
 @app.route("/<location>")
 def make_temp_plot(location=None):
     location, extension = location.split('.')
@@ -189,6 +191,11 @@ def make_temp_plot(location=None):
     image = create_heatmap(name=location, step_size=step_size)
     image.seek(0)
     return send_file(image, download_name=location + '.jpg', mimetype='image/jpg')
+
+# The code below lets the Flask server respond to browser requests for a favicon
+@app.route("/favicon.ico")
+def favicon():
+    return url_for('static', filename='data:,')
 
 
 if __name__ == "__main__":
