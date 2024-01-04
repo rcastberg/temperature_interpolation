@@ -177,45 +177,18 @@ def read_temps(thermometers, token=''):
         t.temp = float(reading["state"])
     return thermometers
 
-@app.route("/basement.jpg")
-def hello():
-    with open('/home/recast/temperature_interpolation/floors.yaml', 'r') as f:
+@app.route("/<location>")
+def make_temp_plot(location=None):
+    location, extension = location.split('.')
+    with open('/config/floors.yaml', 'r') as f:
         floors = yaml.load(f, Loader=yaml.Loader)
-    fp = 'Basement'
     global thermometers, walls
-    thermometers = [Temperature(t['x'], t['y'], name=t['name'], ha_id=t['ha_entity']) for t in floors['Floors'][fp]['thermometers']]
+    thermometers = [Temperature(t['x'], t['y'], name=t['name'], ha_id=t['ha_entity']) for t in floors['Floors'][location]['thermometers']]
     thermometers = read_temps(thermometers, token=floors['Token'])
-    walls = [(Points(w[0][0], w[0][1]), Points(w[1][0], w[1][1])) for w in floors['Floors'][fp]['walls']]
-    image = create_heatmap(name=fp)
+    walls = [(Points(w[0][0], w[0][1]), Points(w[1][0], w[1][1])) for w in floors['Floors'][location]['walls']]
+    image = create_heatmap(name=location)
     image.seek(0)
-    return send_file(image, download_name='basement.jpg', mimetype='image/jpg')
-
-@app.route("/first_floor.jpg")
-def hello2():
-    with open('/home/recast/temperature_interpolation/floors.yaml', 'r') as f:
-        floors = yaml.load(f, Loader=yaml.Loader)
-    fp = 'first_floor'
-    global thermometers, walls
-    thermometers = [Temperature(t['x'], t['y'], name=t['name'], ha_id=t['ha_entity']) for t in floors['Floors'][fp]['thermometers']]
-    thermometers = read_temps(thermometers, token=floors['Token'])
-    walls = [(Points(w[0][0], w[0][1]), Points(w[1][0], w[1][1])) for w in floors['Floors'][fp]['walls']]
-    image = create_heatmap(name=fp)
-    image.seek(0)
-    return send_file(image, download_name='basement.jpg', mimetype='image/jpg')
-
-@app.route("/second_floor.jpg")
-def hello3():
-    with open('/home/recast/temperature_interpolation/floors.yaml', 'r') as f:
-        floors = yaml.load(f, Loader=yaml.Loader)
-    fp = 'second_floor'
-    global thermometers, walls
-    thermometers = [Temperature(t['x'], t['y'], name=t['name'], ha_id=t['ha_entity']) for t in floors['Floors'][fp]['thermometers']]
-    thermometers = read_temps(thermometers, token=floors['Token'])
-    walls = [(Points(w[0][0], w[0][1]), Points(w[1][0], w[1][1])) for w in floors['Floors'][fp]['walls']]
-    image = create_heatmap(name=fp)
-    image.seek(0)
-    return send_file(image, download_name='basement.jpg', mimetype='image/jpg')
-
+    return send_file(image, download_name=location + '.jpg', mimetype='image/jpg')
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)
