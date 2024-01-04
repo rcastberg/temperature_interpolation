@@ -6,6 +6,7 @@ Data is provided in the floors.yaml file.
 Exmaple of floors.yaml:
 Token: "ABCDEF...XYZ"
 Step_size: 0.2
+cpu_cores: 4
 ha_url: "http://ha.local:8123/api/states/"
 Floors:
   Basement:
@@ -29,6 +30,7 @@ import json
 import logging
 from io import BytesIO
 from multiprocessing.dummy import Pool as ThreadPool
+from multiprocessing import cpu_count
 from functools import partial
 
 import numpy as np
@@ -39,12 +41,12 @@ from flask_caching import Cache
 from requests import get
 
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 
 np.seterr(all='raise')
 
 config = {
-    "DEBUG": True,          # some Flask specific configs
+    "DEBUG": False,          # some Flask specific configs
     "CACHE_TYPE": "SimpleCache",  # Flask-Caching related configs
     "CACHE_DEFAULT_TIMEOUT": 300
 }
@@ -195,7 +197,7 @@ def check_inwall(i, x=None, y=None, thermometers=None, walls=None):
     return (i, grid)
 
 
-def create_heatmap(step_size=0.1, thermometers=None, walls=None):
+def create_heatmap(step_size=0.1, thermometers=None, walls=None, threads=cpu_count()):
     """Create a heatmap
     Takes step_size as input
     step_size = step size to use in heatmap
@@ -213,7 +215,7 @@ def create_heatmap(step_size=0.1, thermometers=None, walls=None):
 
     logging.debug('Checking inwall')
     check_inwall_partial = partial(check_inwall, x=x, y=y, thermometers=thermometers, walls=walls)
-    with ThreadPool(80) as pool:
+    with ThreadPool(threads) as pool:
         results = pool.map(check_inwall_partial, i, chunksize=1)
     pool.close()
     pool.join()
@@ -281,21 +283,28 @@ def make_temp_plot(location=None):
     location = location to create heatmap for
     returns a heatmap figure
     """
-    location, extension = location.split('.')
     logging.info('Creating heatmap for location: %s', location)
-    with open('/config/floors.yaml', 'r', encoding='utf8') as f:
-        floors = yaml.load(f, Loader=yaml.Loader)
+    try:
+        with open('/config/floors.yaml', 'r', encoding='utf8') as f:
+            floors = yaml.load(f, Loader=yaml.Loader)
+    except Exception as e:
+        logging.error('Error reading floors.yaml: %s', str(e))
+        return 'Error reading floors.yaml: ' + str(e)
+
+    location, extension = location.split('.')
+    ha_url = floors['ha_url']
+    step_size = floors.get('Step_size', 0.1)
+    cpu_cores = floors.get('cpu_cores', cpu_count())
+
     thermometers = [Temperature(t['x'], t['y'], name=t['name'], ha_id=t['ha_entity'])
                     for t in floors['Floors'][location]['thermometers']]
     logging.debug('Reading temperatures')
-    ha_url = floors['ha_url']
     thermometers = read_temps(thermometers, token=floors['Token'], ha_url=ha_url)
     logging.debug('Temperatures read')
     walls = [(Points(w[0][0], w[0][1]), Points(w[1][0], w[1][1])) for w in floors['Floors'][location]['walls']]
-    step_size = floors['Step_size']
     logging.debug('Heatmap settings for location: %s', location)
     logging.debug('Step size: %s', str(step_size))
-    image = create_heatmap(step_size=step_size, thermometers=thermometers, walls=walls)
+    image = create_heatmap(step_size=step_size, thermometers=thermometers, walls=walls, threads=cpu_cores)
     image.seek(0)
     logging.debug('Heatmap made')
     return send_file(image, download_name=location + '.' + extension, mimetype='image/' + extension)
