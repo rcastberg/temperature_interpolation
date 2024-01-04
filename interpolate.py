@@ -1,3 +1,30 @@
+"""
+This script creates a heatmap for a given location.
+The script reads the location from the url and creates a heatmap for that location.
+Data is provided in the floors.yaml file.
+
+Exmaple of floors.yaml:
+Token: "ABCDEF..XYZ"
+Step_size: 0.2
+ha_url: "http://ha.local:8123/api/states/"
+Floors:
+  Basement:
+    thermometers: 
+      - name: Thermo1
+        x: 1
+        y: 2
+        ha_entity: sensor.Thermo1
+      - name: Thermo2
+        x: 2
+        y: 3
+        ha_entity: sensor.Thermo2
+    walls:
+      - [[0,0], [4,0]]
+      - [[4,0], [4,5]]
+      - [[4,5], [0,5]]
+      - [[0,5], [0,0]]
+"""
+
 import json
 import logging
 from io import BytesIO
@@ -25,12 +52,22 @@ cache = Cache(app)
 
 
 class Points:
+    """
+    Coordinates for points
+    Takes x and y coordinates as input
+    """
     def __init__(self, x, y):
         self.x = x
         self.y = y
 
 
 class Temperature:
+    """
+    Temperature Class for thermometers
+    Takes x and y coordinates as input
+    Takes name and home assistant id as input
+    Takes the temparture as input as well.
+    """
     def __init__(self, x, y, temp=0, name=None, ha_id=None):
         self.x = x
         self.y = y
@@ -40,14 +77,28 @@ class Temperature:
 
 
 def ccw(A, B, C):
+    """ Check if 2 lines intersect
+    Line defined by AB and CD
+    Source: https://bryceboe.com/2006/10/23/line-segment-intersection-algorithm/
+    """
     return (C.y - A.y) * (B.x - A.x) > (B.y - A.y) * (C.x - A.x)
 
 
 def intersect_check(A, B, C, D):
+    """ Check if 2 lines intersect
+    Lines defined by AB and CD
+    Source: https://bryceboe.com/2006/10/23/line-segment-intersection-algorithm/
+    """
     return ccw(A, C, D) != ccw(B, C, D) and ccw(A, B, C) != ccw(A, B, D)
 
 
 def check_intersect(cur_pos, target_pos, walls):
+    """ Check if 2 points intersect with a wall
+    Takes 2 points and a wall as input
+    cur_pos = current position
+    target_pos = target position
+    walls = wall to check
+    returns True if intersect, False if not"""
     s1_x = cur_pos.x-target_pos.x
     s1_y = cur_pos.y-target_pos.y
     s2_x = walls[0].x-walls[1].x
@@ -64,11 +115,25 @@ def check_intersect(cur_pos, target_pos, walls):
 
 
 def calculate_distance(cur_pos, target_pos):
+    """ Calculate distance between 2 points using x and y coordinates
+    Takes 2 points as input
+    cur_pos = current position
+    target_pos = target position
+    returns distance between the 2 points
+    """
     d = np.sqrt(pow((cur_pos.x - target_pos.x), 2) + pow((cur_pos.y - target_pos.y), 2))
     return d
 
 
 def inverse_distance_weighting(distances, values, power):
+    """ Calculate the interpolated value using Inverse Distance Weighting (IDW) formula
+    Takes distances, values and power as input
+    distances = distances between known values and unknown value
+    values = known values
+    power = power to use in IDW formula
+    returns interpolated value
+    Source : https://pareekshithkatti.medium.com/inverse-distance-weighting-interpolation-in-python-68351fb612d2
+    """
     # Calculate the weighted sum of known values based on distances
     distances = distances + 1e-3  # ensure no zero distance
     numerator = np.sum(values / (distances ** power))
@@ -83,24 +148,29 @@ def inverse_distance_weighting(distances, values, power):
 
 
 def check_inwall(i):
+    """Claculate the interpolated value for a all y coordinates for a given x coordinate
+    Takes x coordinate as input
+    i = x coordinate
+    returns a list of interpolated values for all y coordinates for a given x coordinate"
+    """
     global x
     global y
     grid = np.empty(len(y))
     grid[:] = np.nan
-    for j in range(len(y)):
-        inWall = False
+    for j, yj in enumerate(y):
+        in_wall = False
         for w in walls:
             #  Check if points are inside wall bounds.
-            if (x[i] >= min(w[0].x, w[1].x)) and (y[j] >= min(w[0].y, w[1].y)) and \
-               (x[i] <= max(w[0].x, w[1].x)) and (y[j] <= max(w[0].y, w[1].y)):
+            if (x[i] >= min(w[0].x, w[1].x)) and (yj >= min(w[0].y, w[1].y)) and \
+               (x[i] <= max(w[0].x, w[1].x)) and (yj <= max(w[0].y, w[1].y)):
                 grid[j] = np.nan
-                inWall = True
+                in_wall = True
                 break
-        if not inWall:
+        if not in_wall:
             dists = np.zeros(len(thermometers))
             intersect = [False]*len(thermometers)
-            for t in range(len(thermometers)):
-                if (abs(x[i] - thermometers[t].x) < 0.0001) and (abs(y[j] - thermometers[t].y) < 0.0001):
+            for t, thermometer in enumerate(thermometers):
+                if (abs(x[i] - thermometer.x) < 0.0001) and (abs(yj - thermometer.y) < 0.0001):
                     # Is this point the thermometer
                     dists = np.zeros(len(thermometers))
                     intersect = [True]*len(thermometers)
@@ -108,9 +178,9 @@ def check_inwall(i):
                     break
                 else:
                     for w in walls:
-                        if intersect_check(Points(x[i], y[j]), thermometers[t], w[0], w[1]):
+                        if intersect_check(Points(x[i], yj), thermometer, w[0], w[1]):
                             intersect[t] = True
-                dists[t] = calculate_distance(Points(x[i], y[j]), thermometers[t])
+                dists[t] = calculate_distance(Points(x[i], yj), thermometer)
             intersect_not = [not i for i in intersect]
 
             temp = 0
@@ -126,6 +196,11 @@ def check_inwall(i):
 
 
 def create_heatmap(step_size=0.1):
+    """Create a heatmap
+    Takes step_size as input
+    step_size = step size to use in heatmap
+    returns a heatmap figure
+    """
     xmax = max(p.x for w in walls for p in w) + step_size
     ymax = max(p.y for w in walls for p in w) + step_size
     global x, y
@@ -177,14 +252,20 @@ def create_heatmap(step_size=0.1):
     return figdata
 
 
-def read_temps(thermometers, token=''):
-    for t in thermometers:
-        base_url = "http://ha.internal.castberg.org:8123/api/states/"
-        headers = {
+def read_temps(thermometers, token='', ha_url=None):
+    """Read temperatures from Home Assistant
+    Takes a list of thermometers as input
+    thermometers = list of thermometers
+    token = Home Assistant token
+    base_url = Home Assistant url
+    returns a list of thermometers with updated temperatures
+    """
+    headers = {
             "Authorization": "Bearer " + token,
             "content-type": "application/json",
         }
-        url = base_url + t.ha_id
+    for t in thermometers:
+        url = ha_url + t.ha_id
         response = get(url, headers=headers, timeout=10)
         reading = json.loads(response.text)
         t.temp = float(reading["state"])
@@ -194,6 +275,12 @@ def read_temps(thermometers, token=''):
 @app.route("/<location>")
 @cache.cached(timeout=300)
 def make_temp_plot(location=None):
+    """
+    Flask server to create a heatmap for a given location
+    Takes location as input
+    location = location to create heatmap for
+    returns a heatmap figure
+    """
     location, extension = location.split('.')
     logging.info('Creating heatmap for location: %s', location)
     with open('/config/floors.yaml', 'r', encoding='utf8') as f:
@@ -202,7 +289,8 @@ def make_temp_plot(location=None):
     thermometers = [Temperature(t['x'], t['y'], name=t['name'], ha_id=t['ha_entity'])
                     for t in floors['Floors'][location]['thermometers']]
     logging.debug('Reading temperatures')
-    thermometers = read_temps(thermometers, token=floors['Token'])
+    ha_url = floors['ha_url']
+    thermometers = read_temps(thermometers, token=floors['Token'], ha_url=ha_url)
     logging.debug('Temperatures read')
     walls = [(Points(w[0][0], w[0][1]), Points(w[1][0], w[1][1])) for w in floors['Floors'][location]['walls']]
     step_size = floors['Step_size']
@@ -217,6 +305,9 @@ def make_temp_plot(location=None):
 # The code below lets the Flask server respond to browser requests for a favicon
 @app.route("/favicon.ico")
 def favicon():
+    """
+    Flask server to create a dummy favicon
+    """
     return url_for('static', filename='data:,')
 
 
