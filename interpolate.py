@@ -28,10 +28,10 @@ Floors:
 
 import json
 import logging
-from io import BytesIO
-from multiprocessing.dummy import Pool as ThreadPool
-from multiprocessing import cpu_count
 from functools import partial
+from io import BytesIO
+from multiprocessing import cpu_count
+from multiprocessing.dummy import Pool as ThreadPool
 
 import numpy as np
 import plotly.graph_objects as go
@@ -39,7 +39,6 @@ import yaml
 from flask import Flask, send_file, url_for
 from flask_caching import Cache
 from requests import get
-
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -190,7 +189,7 @@ def check_inwall(i, x=None, y=None, thermometers=None, walls=None):
                 temp = inverse_distance_weighting(dists[intersect_not],
                                                   np.array([t.temp for t in thermometers])[intersect_not], 2)
             else:
-                temp = np.nan  # thermometers[intersect_not][0].temp
+                temp = np.nan 
             grid[j] = temp
         else:
             grid[j] = np.nan
