@@ -30,7 +30,7 @@ import datetime
 import json
 import logging
 from functools import partial
-from io import BytesIO
+from io import BytesIO, StringIO
 from multiprocessing import cpu_count
 from multiprocessing.dummy import Pool as ThreadPool
 
@@ -190,14 +190,14 @@ def check_inwall(i, x=None, y=None, thermometers=None, walls=None):
                 temp = inverse_distance_weighting(dists[intersect_not],
                                                   np.array([t.temp for t in thermometers])[intersect_not], 2)
             else:
-                temp = np.nan 
+                temp = np.nan
             grid[j] = temp
         else:
             grid[j] = np.nan
     return (i, grid)
 
 
-def create_heatmap(location='', step_size=0.1, thermometers=None, walls=None, threads=cpu_count()):
+def create_heatmap(location='', extension='jpg', step_size=0.1, thermometers=None, walls=None, threads=cpu_count()):
     """Create a heatmap
     Takes step_size as input
     step_size = step size to use in heatmap
@@ -248,9 +248,12 @@ def create_heatmap(location='', step_size=0.1, thermometers=None, walls=None, th
     fig.update_layout(showlegend=False)
     fig['layout']['yaxis']['scaleanchor'] = 'x'
     fig.update_xaxes(range=[0, xmax])
-    # fig.show()
-    figdata = BytesIO()
-    fig.write_image(figdata, format='jpg')
+    if extension == 'html':
+        figdata = StringIO()
+        fig.write_html(figdata, include_plotlyjs='cdn')
+    else:
+        figdata = BytesIO()
+        fig.write_image(figdata, format=extension)
     return figdata
 
 
@@ -270,7 +273,11 @@ def read_temps(thermometers, token='', ha_url=None):
         url = ha_url + t.ha_id
         response = get(url, headers=headers, timeout=10)
         reading = json.loads(response.text)
-        t.temp = float(reading["state"])
+        try:
+            t.temp = float(reading["state"])
+        except ValueError:
+            logging.exception('Error reading temperature for %s', t.name)
+            t.temp = 0
     return thermometers
 
 
@@ -284,16 +291,19 @@ def make_temp_plot(location=None):
     returns a heatmap figure
     """
     logging.info('Creating heatmap for location: %s', location)
-    try:
-        with open('floors.yaml', 'r', encoding='utf8') as f:
-            floors = yaml.load(f, Loader=yaml.Loader)
-    except OSError:
+    floors = None
+    for file in ['floors.yaml', '/config/floors.yaml']:
+        logging.debug('Trying to read Config file: %s', file)
         try:
-            with open('/config/floors.yaml', 'r', encoding='utf8') as f:
+            with open(file, 'r', encoding='utf8') as f:
                 floors = yaml.load(f, Loader=yaml.Loader)
-        except Exception as e:
-            logging.error('Error reading floors.yaml: %s', str(e))
-            return 'Error reading floors.yaml: ' + str(e)
+            break
+        except OSError:
+            logging.debug('Config File not found: %s', file)
+            continue
+    if floors is None:
+        logging.exception('Error reading floors.yaml')
+        return 'Error reading floors.yaml'
 
     location, extension = location.split('.')
     ha_url = floors['ha_url']
@@ -308,10 +318,15 @@ def make_temp_plot(location=None):
     walls = [(Points(w[0][0], w[0][1]), Points(w[1][0], w[1][1])) for w in floors['Floors'][location]['walls']]
     logging.debug('Heatmap settings for location: %s', location)
     logging.debug('Step size: %s', str(step_size))
-    image = create_heatmap(location=location,step_size=step_size, thermometers=thermometers, walls=walls, threads=cpu_cores)
+    image = create_heatmap(location=location, extension=extension, step_size=step_size, thermometers=thermometers, walls=walls,
+                           threads=cpu_cores)
     image.seek(0)
     logging.debug('Heatmap made')
-    return send_file(image, download_name=location + '.' + extension, mimetype='image/' + extension)
+    if extension == 'html':
+        return image
+    else:
+        return send_file(image, download_name=location + '.' + extension, mimetype='image/' + extension)
+    
 
 
 # The code below lets the Flask server respond to browser requests for a favicon
