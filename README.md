@@ -28,7 +28,10 @@ Floors:
 ```
 
 The docker images spins up a flask server on port 5000, request an image at :
-http://ha.local:8123/Basement.jpg, where Basement is defined in floors
+http://dockerip:5000/Basement.jpg, where Basement is defined in floors
+The image format can be, html, jpg, png etc
+
+Running floor_plan.py will read and display the floor plan so you can check the maps
 
 ha_url is the url of you home assitant instance
 The image extension in the request URL is any that are supported by kaleido.

@@ -318,15 +318,13 @@ def make_temp_plot(location=None):
     walls = [(Points(w[0][0], w[0][1]), Points(w[1][0], w[1][1])) for w in floors['Floors'][location]['walls']]
     logging.debug('Heatmap settings for location: %s', location)
     logging.debug('Step size: %s', str(step_size))
-    image = create_heatmap(location=location, extension=extension, step_size=step_size, thermometers=thermometers, walls=walls,
-                           threads=cpu_cores)
+    image = create_heatmap(location=location, extension=extension, step_size=step_size, thermometers=thermometers,
+                           walls=walls, threads=cpu_cores)
     image.seek(0)
     logging.debug('Heatmap made')
     if extension == 'html':
         return image
-    else:
-        return send_file(image, download_name=location + '.' + extension, mimetype='image/' + extension)
-    
+    return send_file(image, download_name=location + '.' + extension, mimetype='image/' + extension)
 
 
 # The code below lets the Flask server respond to browser requests for a favicon
