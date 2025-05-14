@@ -4,4 +4,4 @@ numpy
 requests
 pyyaml
 plotly
-kaleido
+#kaleido

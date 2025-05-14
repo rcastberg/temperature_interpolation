@@ -3,4 +3,4 @@ set -e
 
 docker build --file="Dockerfile" -t "rcastberg/room_temps:latest"  .
 docker images
-docker push rcastberg/room_temps
+#docker push rcastberg/room_temps
