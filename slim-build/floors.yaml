@@ -4,7 +4,7 @@ ha_url: "http://172.17.0.1:8123/api/states/"
 Floors:
   Basement:
     thermometers:
-      - name: Thermo1
+      - name: MainBedroom Thermometer Thermo1
         x: 1
         y: 2
         ha_entity: sensor.Thermo1
