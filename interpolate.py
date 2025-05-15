@@ -43,7 +43,7 @@ from requests import get
 
 logging.basicConfig(level=logging.WARNING)
 
-np.seterr(all='raise')
+#np.seterr(all='raise')
 
 config = {
     "DEBUG": False,          # some Flask specific configs
@@ -205,6 +205,8 @@ def create_heatmap(location='', extension='jpg', step_size=0.1, thermometers=Non
     """
     xmax = max(p.x for w in walls for p in w) + step_size
     ymax = max(p.y for w in walls for p in w) + step_size
+    print("Step size: ", step_size)
+    logging.warning('Step Size %s', str(step_size))
     x = np.arange(0, xmax, step_size)
     y = np.arange(0, ymax, step_size)
 
