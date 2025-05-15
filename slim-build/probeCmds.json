@@ -4,22 +4,22 @@
         {
             "protocol": "http",
             "method": "GET",
-            "resource": "/Basement.html"
+            "resource": "/Basement_Downstairs.html"
           },
           {
             "protocol": "http",
             "method": "GET",
-            "resource": "/Basement.png"
+            "resource": "/Basement_Downstairs.png"
           },
           {
             "protocol": "http",
             "method": "GET",
-            "resource": "/Basement.jpg"
+            "resource": "/Basement_Downstairs.jpg"
           },
           {
             "protocol": "http",
             "method": "GET",
-            "resource": "/Basement.svg"
+            "resource": "/Basement_Downstairs.svg"
           }
     ]
   }
