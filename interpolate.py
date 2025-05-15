@@ -29,6 +29,7 @@ Floors:
 import datetime
 import json
 import logging
+import math
 from functools import partial
 from io import BytesIO, StringIO
 from multiprocessing import cpu_count
@@ -125,7 +126,7 @@ def calculate_distance(cur_pos, target_pos):
     target_pos = target position
     returns distance between the 2 points
     """
-    d = np.sqrt(pow((cur_pos.x - target_pos.x), 2) + pow((cur_pos.y - target_pos.y), 2))
+    d = math.sqrt(math.pow((cur_pos.x - target_pos.x), 2) + math.pow((cur_pos.y - target_pos.y), 2))
     return d
 
 

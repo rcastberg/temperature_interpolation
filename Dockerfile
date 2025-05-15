@@ -24,12 +24,6 @@ RUN rm -rf /venv/lib/python3.11/site-packages/pip* \
     /venv/lib/python3.10/site-packages/wheel* \
     /usr/local/bin/pip 
 
-RUN rm -rf \
-    /venv/lib/python3.11/site-packages/numpy/random \
-    /venv/lib/python3.11/site-packages/plotly/validators 
-
-
-
 # syntax=docker/dockerfile:1
 FROM ${GOOGLE_DISTROLESS_BASE_IMAGE}
 
