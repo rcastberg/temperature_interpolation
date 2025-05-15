@@ -16,7 +16,7 @@ RUN apt-get update && \
 # Build the virtualenv as a separate step: Only re-execute this step when requirements.txt changes
 # syntax=docker/dockerfile:1
 FROM build AS build-venv
-COPY requirements.txt /requirements.txt
+COPY requirements-kaleido.txt /requirements.txt
 RUN /venv/bin/pip install --disable-pip-version-check -r /requirements.txt
 
 # Remove pip, setuptools, wheel
@@ -29,9 +29,10 @@ RUN rm -rf /venv/lib/python3.11/site-packages/pip* \
 FROM ${GOOGLE_DISTROLESS_BASE_IMAGE}
 
 COPY --from=build-venv /venv /venv
+# Kaleido needs bash, copy static bash binaries if we need it.
+COPY --from=build-venv /bin/bash-static /bin/bash
 
 COPY . /app
 WORKDIR /app
-EXPOSE 5000
 
 ENTRYPOINT ["/venv/bin/python3", "-m" , "flask", "--app", "interpolate", "run", "--host=0.0.0.0"]

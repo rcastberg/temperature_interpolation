@@ -1,0 +1,99 @@
+name: Slim Docker Container
+
+on:
+  release:
+    types: [published]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  slim-container:
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Log in to the Container registry
+        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies for mock server
+        run: |
+          pip install flask
+
+      - name: Build Docker image from default Dockerfile
+        run: |
+          docker build -t ${{ env.IMAGE_NAME }}:latest .
+
+      - name: Build Docker image from Dockerfile.kaleido
+        run: |
+          docker build -f Dockerfile.kaleido -t ${{ env.IMAGE_NAME }}:kaleido .
+
+      - name: Start mock Home Assistant server and Slim Docker image
+        run: |
+          set -e
+          # We need to do this in one step otherwise the mock server will not be available when mint tries to connect to it.
+
+          echo "🔧 Starting mock Home Assistant server..."
+          python slim-build/mock_ha_server.py &
+          MOCK_SERVER_PID=$!
+          # Wait for server to start
+          sleep 2
+
+          echo "🔧 Downloading docker-slim CLI..."
+          curl -sL https://github.com/slimtoolkit/slim/releases/download/1.40.11/dist_linux.tar.gz | tar -xz
+          sudo mv dist_linux/mint /usr/local/bin/
+          sudo mv dist_linux/mint-sensor /usr/local/bin/
+
+          echo "✅ Version check:"
+          mint --version
+
+          echo "🐳 Building Docker image..."
+          docker build -t  ${{ env.IMAGE_NAME }}:latest .
+
+          echo "🧽 Slimming Docker image..."
+          mint build \
+            --target ${{ env.IMAGE_NAME }}:latest \
+            --tag ${{ env.IMAGE_NAME }}:slim \
+            --expose 5000 \
+            --http-probe \
+            --http-probe-cmd-file "${{ github.workspace }}/slim-build/probeCmds.json" \
+            --mount "${{ github.workspace }}/slim-build/floors.yaml:/config/floors.yaml:ro"
+
+          echo "🧽 Slimming Docker kaleido image..."
+          mint build \
+            --target temp-interpolation:kaleido \
+            --tag temp-interpolation:kaleido-slim \
+            --expose 5000 \
+            --http-probe \
+            --http-probe-cmd-file "${{ github.workspace }}/slim-build/probeCmds.json" \
+            --mount "${{ github.workspace }}/slim-build/floors.yaml:/config/floors.yaml:ro"
+
+          echo "🛑 Stopping mock server..."
+          kill $MOCK_SERVER_PID || true
+
+      - name: Push slim image
+        run: |
+          docker tag temp-interpolation:slim ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:slim
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:slim
+          docker tag temp-interpolation:kaleido ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:kaleido-slim
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:kaleido-slim

@@ -1,0 +1,26 @@
+{
+    "commands":
+    [
+        {
+            "protocol": "http",
+            "method": "GET",
+            "resource": "/Basement.html"
+          },
+          {
+            "protocol": "http",
+            "method": "GET",
+            "resource": "/Basement.png"
+          },
+          {
+            "protocol": "http",
+            "method": "GET",
+            "resource": "/Basement.jpg"
+          },
+          {
+            "protocol": "http",
+            "method": "GET",
+            "resource": "/Basement.svg"
+          }
+    ]
+  }
+  
