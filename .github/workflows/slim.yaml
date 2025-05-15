@@ -81,8 +81,8 @@ jobs:
 
           echo "🧽 Slimming Docker kaleido image..."
           mint build \
-            --target temp-interpolation:kaleido \
-            --tag temp-interpolation:kaleido-slim \
+            --target ${{ env.IMAGE_NAME }}:kaleido \
+            --tag ${{ env.IMAGE_NAME }}:kaleido-slim \
             --expose 5000 \
             --http-probe \
             --http-probe-cmd-file "${{ github.workspace }}/slim-build/probeCmds.json" \
@@ -93,7 +93,7 @@ jobs:
 
       - name: Push slim image
         run: |
-          docker tag temp-interpolation:slim ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:slim
+          docker tag ${{ env.IMAGE_NAME }}:slim ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:slim
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:slim
-          docker tag temp-interpolation:kaleido ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:kaleido-slim
+          docker tag ${{ env.IMAGE_NAME }}:kaleido-slim ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:kaleido-slim
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:kaleido-slim
