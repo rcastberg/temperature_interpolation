@@ -1,7 +1,0 @@
-flask
-Flask-Caching
-numpy
-requests
-pyyaml
-plotly
-#kaleido
