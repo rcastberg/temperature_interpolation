@@ -143,7 +143,9 @@ class TemperatureHeatmapCard extends HTMLElement {
   // around walls. Cells inside a wall bounding box (inWall) are also skipped.
   _dijkstra(sensor, xs, ys, inWall) {
     const nx = xs.length, ny = ys.length;
-    const dist = Array.from({ length: nx }, () => new Float32Array(ny).fill(Infinity));
+    // Plain float64 arrays: heap priorities must match stored distances exactly,
+    // otherwise float32 rounding makes valid pops look "stale" and Dijkstra stalls.
+    const dist = Array.from({ length: nx }, () => new Array(ny).fill(Infinity));
 
     let si = Math.round((sensor.x - xs[0]) / this._stepSize);
     let sj = Math.round((sensor.y - ys[0]) / this._stepSize);
