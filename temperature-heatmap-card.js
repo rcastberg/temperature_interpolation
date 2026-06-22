@@ -358,6 +358,8 @@ class TemperatureHeatmapCard extends HTMLElement {
     // Sensor dots + temperature labels
     const fontSize = Math.max(11, scale * 0.28);
     ctx.font = `bold ${fontSize}px sans-serif`;
+    ctx.textBaseline = 'alphabetic';
+    const margin = 2;
     for (const t of therms) {
       const px = cx(t.y), py = cy(t.x);
       ctx.beginPath();
@@ -367,9 +369,34 @@ class TemperatureHeatmapCard extends HTMLElement {
       ctx.strokeStyle = '#fff';
       ctx.lineWidth = 1.5;
       ctx.stroke();
+
       if (t.temp !== null) {
+        const label = t.temp.toFixed(1);
+        const tw = ctx.measureText(label).width;
+        // Candidate offsets relative to the dot: top-right, top-left, bottom-right, bottom-left
+        const candidates = [
+          { tx: px + 8,      ty: py - 4 },
+          { tx: px - 8 - tw, ty: py - 4 },
+          { tx: px + 8,      ty: py + 4 + fontSize },
+          { tx: px - 8 - tw, ty: py + 4 + fontSize },
+        ];
+        // Pick the first candidate whose text box stays fully inside the canvas;
+        // fall back to clamping the default position if none fit.
+        let pos = candidates.find(c =>
+          c.tx >= margin && c.tx + tw <= canvas.width - margin &&
+          c.ty - fontSize >= margin && c.ty <= canvas.height - margin);
+        if (!pos) {
+          pos = {
+            tx: Math.min(Math.max(px + 8, margin), canvas.width - tw - margin),
+            ty: Math.min(Math.max(py - 4, fontSize + margin), canvas.height - margin),
+          };
+        }
+        // White halo keeps the label legible over walls and dark cells
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#fff';
+        ctx.strokeText(label, pos.tx, pos.ty);
         ctx.fillStyle = '#000';
-        ctx.fillText(t.temp.toFixed(1), px + 8, py - 4);
+        ctx.fillText(label, pos.tx, pos.ty);
       }
     }
   }
