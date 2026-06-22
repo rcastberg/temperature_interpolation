@@ -1,4 +1,5 @@
 {
   "name": "Temperature Heatmap Card",
-  "render_readme": true
+  "render_readme": true,
+  "filename": "temperature-heatmap-card.js"
 }
