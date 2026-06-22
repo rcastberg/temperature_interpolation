@@ -195,7 +195,7 @@ class TemperatureHeatmapCard extends HTMLElement {
     const canvas = this._canvas;
     const ctx = this._ctx;
 
-    // Canvas x-axis = floor y-axis, canvas y-axis = floor x-axis (preserves original orientation)
+    // Canvas x-axis = floor y-axis, canvas y-axis = floor x-axis (inverted to match Plotly)
     const cssW = canvas.clientWidth || 400;
     const scale = cssW / this._ymax;
     canvas.width = cssW;
@@ -203,20 +203,21 @@ class TemperatureHeatmapCard extends HTMLElement {
     this._scale = scale;
 
     // Floor coords → canvas pixels
-    const cx = fy => fy * scale;  // floor y → canvas x
-    const cy = fx => fx * scale;  // floor x → canvas y
+    // cy flips the y-axis so floor x=0 sits at the canvas bottom, matching Plotly's convention
+    const cx = fy => fy * scale;
+    const cy = fx => canvas.height - fx * scale;
     const cellW = step * scale + 1; // +1 closes sub-pixel gaps between cells
     const cellH = step * scale + 1;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Heatmap cells
+    // Heatmap cells — fillRect origin is top-left, so use cy(xs[i] + step) after flipping
     for (let i = 0; i < xs.length; i++) {
       for (let j = 0; j < ys.length; j++) {
         const v = grid[i][j];
         if (isNaN(v)) continue;
         ctx.fillStyle = this._color(v);
-        ctx.fillRect(cx(ys[j]), cy(xs[i]), cellW, cellH);
+        ctx.fillRect(cx(ys[j]), cy(xs[i] + step), cellW, cellH);
       }
     }
 
@@ -260,7 +261,7 @@ class TemperatureHeatmapCard extends HTMLElement {
 
     let nearest = null, bestD = Infinity;
     for (const t of this._therms) {
-      const d = Math.hypot(t.y * this._scale - mx, t.x * this._scale - my);
+      const d = Math.hypot(t.y * this._scale - mx, (this._canvas.height - t.x * this._scale) - my);
       if (d < bestD) { bestD = d; nearest = t; }
     }
 
