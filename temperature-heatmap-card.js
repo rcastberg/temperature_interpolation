@@ -1,5 +1,38 @@
 'use strict';
 
+class MinHeap {
+  constructor() { this._h = []; }
+  get size() { return this._h.length; }
+  push(item) {
+    this._h.push(item);
+    let i = this._h.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (this._h[p][0] <= this._h[i][0]) break;
+      [this._h[p], this._h[i]] = [this._h[i], this._h[p]];
+      i = p;
+    }
+  }
+  pop() {
+    const top = this._h[0];
+    const last = this._h.pop();
+    if (this._h.length > 0) {
+      this._h[0] = last;
+      let i = 0;
+      while (true) {
+        let m = i;
+        const l = 2 * i + 1, r = 2 * i + 2;
+        if (l < this._h.length && this._h[l][0] < this._h[m][0]) m = l;
+        if (r < this._h.length && this._h[r][0] < this._h[m][0]) m = r;
+        if (m === i) break;
+        [this._h[m], this._h[i]] = [this._h[i], this._h[m]];
+        i = m;
+      }
+    }
+    return top;
+  }
+}
+
 class TemperatureHeatmapCard extends HTMLElement {
   constructor() {
     super();
@@ -105,68 +138,153 @@ class TemperatureHeatmapCard extends HTMLElement {
     return si >= 0 && si <= 1 && ti >= 0 && ti <= 1;
   }
 
-  // IDW grid computation — port of check_inwall() + inverse_distance_weighting() from interpolate.py
+  // Dijkstra shortest-path distance from one sensor to every reachable grid cell.
+  // Edges that cross a wall segment are impassable, so the path naturally routes
+  // around walls. Cells inside a wall bounding box (inWall) are also skipped.
+  _dijkstra(sensor, xs, ys, inWall) {
+    const nx = xs.length, ny = ys.length;
+    const dist = Array.from({ length: nx }, () => new Float32Array(ny).fill(Infinity));
+
+    let si = Math.round((sensor.x - xs[0]) / this._stepSize);
+    let sj = Math.round((sensor.y - ys[0]) / this._stepSize);
+    si = Math.min(Math.max(si, 0), nx - 1);
+    sj = Math.min(Math.max(sj, 0), ny - 1);
+    dist[si][sj] = 0;
+
+    const heap = new MinHeap();
+    heap.push([0, si, sj]);
+
+    const dirs = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+
+    while (heap.size > 0) {
+      const [d, i, j] = heap.pop();
+      if (d > dist[i][j]) continue; // stale heap entry
+
+      for (const [di, dj] of dirs) {
+        const ni = i + di, nj = j + dj;
+        if (ni < 0 || ni >= nx || nj < 0 || nj >= ny) continue;
+        if (inWall[ni][nj]) continue;
+
+        // Reject edges whose midpoint crosses a wall segment
+        const p = { x: xs[i],  y: ys[j]  };
+        const q = { x: xs[ni], y: ys[nj] };
+        let blocked = false;
+        for (const w of this._walls) {
+          if (this._intersects(p, q, w[0], w[1])) { blocked = true; break; }
+        }
+        if (blocked) continue;
+
+        const nd = d + Math.hypot(xs[ni] - xs[i], ys[nj] - ys[j]);
+        if (nd < dist[ni][nj]) {
+          dist[ni][nj] = nd;
+          heap.push([nd, ni, nj]);
+        }
+      }
+    }
+
+    return dist;
+  }
+
+  // Separable Gaussian blur applied in-place. NaN cells are excluded from
+  // kernel sums, so the blur does not bleed across wall boundaries.
+  _gaussianBlur(grid, nx, ny, sigma) {
+    const radius = Math.ceil(sigma * 2);
+    const kernel = [];
+    let ksum = 0;
+    for (let k = -radius; k <= radius; k++) {
+      const v = Math.exp(-(k * k) / (2 * sigma * sigma));
+      kernel.push(v);
+      ksum += v;
+    }
+    for (let k = 0; k < kernel.length; k++) kernel[k] /= ksum;
+
+    // Horizontal pass (along y axis)
+    const tmp = Array.from({ length: nx }, () => new Float32Array(ny).fill(NaN));
+    for (let i = 0; i < nx; i++) {
+      for (let j = 0; j < ny; j++) {
+        if (isNaN(grid[i][j])) continue;
+        let num = 0, den = 0;
+        for (let k = -radius; k <= radius; k++) {
+          const nj = j + k;
+          if (nj >= 0 && nj < ny && !isNaN(grid[i][nj])) {
+            num += grid[i][nj] * kernel[k + radius];
+            den += kernel[k + radius];
+          }
+        }
+        if (den > 0) tmp[i][j] = num / den;
+      }
+    }
+
+    // Vertical pass (along x axis)
+    for (let i = 0; i < nx; i++) {
+      for (let j = 0; j < ny; j++) {
+        if (isNaN(tmp[i][j])) continue;
+        let num = 0, den = 0;
+        for (let k = -radius; k <= radius; k++) {
+          const ni = i + k;
+          if (ni >= 0 && ni < nx && !isNaN(tmp[ni][j])) {
+            num += tmp[ni][j] * kernel[k + radius];
+            den += kernel[k + radius];
+          }
+        }
+        if (den > 0) grid[i][j] = num / den;
+      }
+    }
+  }
+
   _computeGrid() {
     const { _stepSize: step, _therms: therms, _walls: walls, _xmax: xmax, _ymax: ymax } = this;
     const xs = [], ys = [];
     for (let v = 0; v < xmax; v += step) xs.push(v);
     for (let v = 0; v < ymax; v += step) ys.push(v);
+    const nx = xs.length, ny = ys.length;
+
+    // Precompute which cells fall inside a wall segment's bounding box
+    const inWall = Array.from({ length: nx }, () => new Uint8Array(ny));
+    for (let i = 0; i < nx; i++) {
+      for (let j = 0; j < ny; j++) {
+        for (const w of walls) {
+          if (xs[i] >= Math.min(w[0].x, w[1].x) && xs[i] <= Math.max(w[0].x, w[1].x) &&
+              ys[j] >= Math.min(w[0].y, w[1].y) && ys[j] <= Math.max(w[0].y, w[1].y)) {
+            inWall[i][j] = 1; break;
+          }
+        }
+      }
+    }
 
     const valid = therms.filter(t => t.temp !== null);
-    const grid = Array.from({ length: xs.length }, () => new Float32Array(ys.length).fill(NaN));
+    const grid = Array.from({ length: nx }, () => new Float32Array(ny).fill(NaN));
 
-    for (let i = 0; i < xs.length; i++) {
-      const xi = xs[i];
-      for (let j = 0; j < ys.length; j++) {
-        const yj = ys[j];
+    if (valid.length > 0) {
+      // Dijkstra from each sensor — gives true path distance routing around walls
+      const pathDists = valid.map(t => this._dijkstra(t, xs, ys, inWall));
 
-        // Skip grid points inside a wall segment's bounding box
-        let inWall = false;
-        for (const w of walls) {
-          if (xi >= Math.min(w[0].x, w[1].x) && xi <= Math.max(w[0].x, w[1].x) &&
-              yj >= Math.min(w[0].y, w[1].y) && yj <= Math.max(w[0].y, w[1].y)) {
-            inWall = true; break;
+      // IDW over path distances (sensors behind sealed walls have Infinity distance
+      // and are naturally excluded; sensors in adjacent rooms contribute via the
+      // longer path, giving realistic heat permeability behaviour)
+      for (let i = 0; i < nx; i++) {
+        for (let j = 0; j < ny; j++) {
+          if (inWall[i][j]) continue;
+          let num = 0, den = 0;
+          for (let k = 0; k < valid.length; k++) {
+            const d = pathDists[k][i][j];
+            if (!isFinite(d)) continue;
+            const w = 1 / ((d + 1e-3) ** 2);
+            num += valid[k].temp * w;
+            den += w;
           }
+          if (den > 0) grid[i][j] = num / den;
         }
-        if (inWall || valid.length === 0) continue;
-
-        const pt = { x: xi, y: yj };
-        let placed = false;
-        const dists = [], vals = [], blocked = [];
-
-        for (const t of valid) {
-          // Grid point is exactly at this sensor — use its temp directly
-          if (Math.abs(xi - t.x) < 0.0001 && Math.abs(yj - t.y) < 0.0001) {
-            grid[i][j] = t.temp; placed = true; break;
-          }
-          let wallBlocked = false;
-          for (const w of walls) {
-            if (this._intersects(pt, t, w[0], w[1])) { wallBlocked = true; break; }
-          }
-          dists.push(Math.hypot(xi - t.x, yj - t.y));
-          vals.push(t.temp);
-          blocked.push(wallBlocked);
-        }
-        if (placed) continue;
-
-        // IDW over unblocked sensors
-        let num = 0, den = 0, count = 0;
-        for (let k = 0; k < dists.length; k++) {
-          if (blocked[k]) continue;
-          const w = 1 / ((dists[k] + 1e-3) ** 2);
-          num += vals[k] * w;
-          den += w;
-          count++;
-        }
-        if (count > 0) grid[i][j] = num / den;
       }
+
+      // Gaussian blur smooths the grid-resolution staircase artifacts
+      this._gaussianBlur(grid, nx, ny, 1.5);
     }
 
     this._grid = grid;
     this._xs = xs;
     this._ys = ys;
 
-    // Temperature range for colorscale
     const flat = [];
     for (const row of grid) for (const v of row) if (!isNaN(v)) flat.push(v);
     this._minT = flat.length ? Math.min(...flat) : 0;
@@ -206,8 +324,7 @@ class TemperatureHeatmapCard extends HTMLElement {
     canvas.height = Math.round(this._xmax * scale);
     this._scale = scale;
 
-    // Floor coords → canvas pixels
-    // cy flips the y-axis so floor x=0 sits at the canvas bottom, matching Plotly's convention
+    // cy flips the y-axis so floor x=0 sits at the canvas bottom
     const cx = fy => fy * scale;
     const cy = fx => canvas.height - fx * scale;
     const cellW = step * scale + 1; // +1 closes sub-pixel gaps between cells
@@ -259,9 +376,8 @@ class TemperatureHeatmapCard extends HTMLElement {
     if (!this._scale) return;
     const rect = this._canvas.getBoundingClientRect();
     const scaleX = this._canvas.width / rect.width;
-    const scaleY = this._canvas.height / rect.height;
     const mx = (e.clientX - rect.left) * scaleX;
-    const my = (e.clientY - rect.top) * scaleY;
+    const my = (e.clientY - rect.top) * (this._canvas.height / rect.height);
 
     let nearest = null, bestD = Infinity;
     for (const t of this._therms) {
