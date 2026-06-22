@@ -13,7 +13,6 @@ class TemperatureHeatmapCard extends HTMLElement {
       throw new Error('temperature-heatmap-card requires thermometers and walls');
     }
     this._config = config;
-    this._stepSize = config.step_size ?? 0.2;
     this._therms = config.thermometers.map(t => ({
       x: t.x, y: t.y, name: t.name, entity: t.entity, temp: null,
     }));
@@ -21,8 +20,13 @@ class TemperatureHeatmapCard extends HTMLElement {
       { x: w[0][0], y: w[0][1] },
       { x: w[1][0], y: w[1][1] },
     ]);
-    this._xmax = Math.max(...this._walls.flatMap(w => [w[0].x, w[1].x])) + this._stepSize;
-    this._ymax = Math.max(...this._walls.flatMap(w => [w[0].y, w[1].y])) + this._stepSize;
+    const xmax0 = Math.max(...this._walls.flatMap(w => [w[0].x, w[1].x]));
+    const ymax0 = Math.max(...this._walls.flatMap(w => [w[0].y, w[1].y]));
+    // Clamp step so total grid cells stay under 40 000, regardless of unit system
+    const minStep = Math.sqrt((xmax0 * ymax0) / 40000);
+    this._stepSize = Math.max(minStep, config.step_size ?? minStep * 2);
+    this._xmax = xmax0 + this._stepSize;
+    this._ymax = ymax0 + this._stepSize;
 
     this.shadowRoot.innerHTML = `
       <style>
